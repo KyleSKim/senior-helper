@@ -53,6 +53,20 @@
     cursor: pointer;
     line-height: 1;
   }
+  .mode-toggle { display: flex; gap: 8px; padding: 10px 12px 0; }
+  .mode-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .mode-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
   .tabs {
     display: flex;
     gap: 6px;
@@ -99,6 +113,71 @@
   .btn.secondary { background: #fff; color: var(--blue); border: 1px solid var(--blue); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .muted { color: var(--muted); font-size: 13px; }
+
+  /* ---- Inventory (item/unit) view ---- */
+  .inv-search-wrap { padding-bottom: 10px; }
+  .item-list { display: flex; flex-direction: column; gap: 10px; }
+  .item-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+  .item-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .item-toggle-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .item-name { font-size: 15px; font-weight: 700; color: var(--text); }
+  .item-sub {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .item-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .badge-stock { background: #e0f2fe; color: #0369a1; }
+  .badge-install { background: #dcfce7; color: #15803d; }
+  .badge-other { background: #fef3c7; color: #92400e; }
+  .badge-empty { background: #f1f5f9; color: var(--muted); }
+  .item-chevron { font-size: 20px; color: var(--muted); transition: transform 0.15s; flex: 0 0 auto; }
+  .item-toggle.expanded .item-chevron { transform: rotate(90deg); }
+  .item-units { border-top: 1px solid var(--border); background: #fafafa; }
+  .unit-card { border-bottom: 1px solid var(--border); }
+  .unit-card:last-child { border-bottom: none; }
+  .unit-empty { padding: 14px; color: var(--muted); font-size: 13px; text-align: center; }
+
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .step-btn {
+    width: 34px; height: 34px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--blue);
+    cursor: pointer;
+  }
+  .step-input { flex: 1; text-align: center; }
+
+  /* ---- Generic sheet (row-card) view, shared by both modes ---- */
   .sections { display: flex; flex-direction: column; gap: 14px; }
   .section-card {
     background: #fff;
@@ -135,9 +214,7 @@
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 8px;
   }
-  .field-item {
-    min-width: 0;
-  }
+  .field-item { min-width: 0; }
   .field-item label {
     display: block;
     font-size: 11px;
@@ -261,12 +338,17 @@
 
 <header>
   <div class="row">
-    <h1 id="appTitle">NHHC ERP 대시보드</h1>
+    <h1 id="appTitle">NHHC ERP</h1>
     <div>
       <button class="icon-btn" id="settingsBtn" title="설정">⚙️</button>
     </div>
   </div>
 </header>
+
+<div class="mode-toggle" id="modeToggle" style="display:none;">
+  <button type="button" class="mode-btn active" data-mode="inventory">재고·설치 현황</button>
+  <button type="button" class="mode-btn" data-mode="sheet">전체 시트</button>
+</div>
 
 <div class="tabs" id="tabsRow" style="display:none;"></div>
 <div class="search-wrap" id="searchWrap" style="display:none;">
@@ -279,8 +361,8 @@
 
 <main id="mainArea">
   <div class="card">
-    <p>이 페이지는 Google 계정으로 로그인한 뒤,<br/>연동된 ERP 구글시트 값을 모바일에서 바로 수정할 수 있는 도구입니다.</p>
-    <p class="muted">수식으로 자동 계산되는 셀은 잠겨 있고, 직접 입력한 값만 수정할 수 있어요.</p>
+    <p>이 페이지는 Google 계정으로 로그인한 뒤,<br/>NHHC ERP 구글시트와 연동해서 재고·설치 현황을 모바일에서 조회하고 바로 수정할 수 있는 도구입니다.</p>
+    <p class="muted">수식으로 자동 계산되는 값은 잠겨 있고, 직접 입력하는 값만 수정할 수 있어요.</p>
     <button class="btn" id="loginBtn">Google로 로그인</button>
     <p class="muted" id="loginHint" style="margin-top:10px;">로그인이 안 되면 이 페이지 주소가 Google Cloud Console의 승인된 자바스크립트 원본으로 등록되어 있는지 확인해주세요.</p>
   </div>
@@ -290,6 +372,14 @@
   <button class="btn secondary" id="refreshBtn">새로고침</button>
   <button class="btn" id="saveBtn" disabled>변경사항 저장 (<span id="dirtyCount">0</span>)</button>
 </div>
+
+<datalist id="statusOptions">
+  <option value="IN_STOCK"></option>
+  <option value="INSTALLED"></option>
+  <option value="IN_REPAIR"></option>
+  <option value="RETURNED"></option>
+  <option value="DISPOSED"></option>
+</datalist>
 
 <div id="settingsModalRoot"></div>
 <div id="toastRoot"></div>
@@ -302,15 +392,23 @@
   var DEFAULT_SPREADSHEET_ID = "1nZWey3gKZPZK_WeCBfKICE8x8T5MF3Bep7ZHrFUKcLE";
   var DEFAULT_CLIENT_ID = "613652838056-oki9p112t4qr9uec266s26o4sd7hf5op.apps.googleusercontent.com";
   var SCOPE = "https://www.googleapis.com/auth/spreadsheets";
-  var IDENTITY_KEYWORDS = ["고객명", "고객", "성명", "품목명", "품목", "제품명", "유닛코드", "시리얼번호", "카테고리", "이름", "명칭"];
+  var IDENTITY_KEYWORDS = [
+    "고객명", "CUSTOMER", "성명", "품목명", "ITEM NAME", "품목", "제품명",
+    "UNIT CODE", "유닛코드", "MAT NO", "SERIAL NO", "시리얼번호",
+    "CATEGORY", "카테고리", "STATUS", "상태", "LOCATION", "위치",
+    "이름", "명칭", "NAME"
+  ];
 
   var state = {
     settings: loadSettings(),
     accessToken: null,
     tokenClient: null,
     sheets: [],
+    mode: "inventory",
     activeSheetTitle: null,
     grid: null,
+    inventoryData: null,
+    inventoryComputed: null,
     dirty: {}
   };
 
@@ -425,11 +523,13 @@
 
   function onLoginSuccess() {
     toast("로그인되었습니다.");
-    document.getElementById("tabsRow").style.display = "flex";
-    document.getElementById("searchWrap").style.display = "block";
+    document.getElementById("modeToggle").style.display = "flex";
     document.getElementById("legendRow").style.display = "flex";
     document.getElementById("saveBar").style.display = "flex";
-    loadSheetList();
+    document.getElementById("mainArea").innerHTML = '<div class="spinner"></div>';
+    loadSheetList(function () {
+      setMode(state.mode, true);
+    });
   }
 
   // ---------- Sheets API helpers ----------
@@ -468,22 +568,48 @@
     return "'" + title.replace(/'/g, "''") + "'";
   }
 
+  // ---------- Mode switching ----------
+
+  function setMode(mode, skipConfirm) {
+    if (!skipConfirm && Object.keys(state.dirty).length > 0) {
+      if (!confirm("저장하지 않은 변경사항이 있습니다. 화면을 전환하면 사라집니다. 계속할까요?")) return;
+    }
+    state.dirty = {};
+    updateDirtyCount();
+    state.mode = mode;
+    document.querySelectorAll(".mode-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-mode") === mode);
+    });
+
+    if (mode === "inventory") {
+      document.getElementById("tabsRow").style.display = "none";
+      document.getElementById("searchWrap").style.display = "none";
+      loadInventoryView();
+    } else {
+      document.getElementById("tabsRow").style.display = "flex";
+      document.getElementById("searchWrap").style.display = "block";
+      renderTabs();
+      if (!state.activeSheetTitle && state.sheets.length) state.activeSheetTitle = state.sheets[0].title;
+      if (state.activeSheetTitle) loadGrid(state.activeSheetTitle);
+    }
+  }
+
+  function refreshCurrentView() {
+    if (state.mode === "inventory") loadInventoryView();
+    else if (state.activeSheetTitle) loadGrid(state.activeSheetTitle);
+  }
+
   // ---------- Load tab list ----------
 
-  function loadSheetList() {
+  function loadSheetList(onDone) {
     var id = state.settings.spreadsheetId;
     var url = "https://sheets.googleapis.com/v4/spreadsheets/" + id +
       "?fields=sheets.properties(sheetId,title,index)";
-    document.getElementById("mainArea").innerHTML = '<div class="spinner"></div>';
     apiFetch(url).then(function (data) {
       state.sheets = (data.sheets || []).map(function (s) { return s.properties; })
         .sort(function (a, b) { return a.index - b.index; });
       renderTabs();
-      if (state.sheets.length) {
-        selectTab(state.sheets[0].title);
-      } else {
-        document.getElementById("mainArea").innerHTML = '<div class="empty-state">시트 탭을 찾을 수 없습니다.</div>';
-      }
+      if (onDone) onDone();
     }).catch(function (err) {
       document.getElementById("mainArea").innerHTML =
         '<div class="empty-state">시트 목록을 불러오지 못했습니다.<br/>' + escapeHtml(err.message) + '</div>';
@@ -510,8 +636,7 @@
     state.dirty = {};
     updateDirtyCount();
     renderTabs();
-    var searchInput = document.getElementById("searchInput");
-    searchInput.value = "";
+    document.getElementById("searchInput").value = "";
     loadGrid(title);
   }
 
@@ -546,32 +671,7 @@
     }
   }
 
-  // ---------- Load & render grid ----------
-
-  function loadGrid(title) {
-    var id = state.settings.spreadsheetId;
-    var range = quoteSheetTitle(title);
-    var fields = "sheets(merges,data.rowData.values(formattedValue,userEnteredValue))";
-    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + id +
-      "?ranges=" + encodeURIComponent(range) +
-      "&includeGridData=true&fields=" + encodeURIComponent(fields);
-
-    document.getElementById("mainArea").innerHTML = '<div class="spinner"></div>';
-    apiFetch(url).then(function (data) {
-      var sheet = data.sheets && data.sheets[0];
-      if (!sheet) {
-        document.getElementById("mainArea").innerHTML = '<div class="empty-state">데이터가 없습니다.</div>';
-        return;
-      }
-      var rows = (sheet.data && sheet.data[0] && sheet.data[0].rowData) || [];
-      var merges = sheet.merges || [];
-      state.grid = { title: title, rows: rows, merges: merges };
-      renderGrid();
-    }).catch(function (err) {
-      document.getElementById("mainArea").innerHTML =
-        '<div class="empty-state">데이터를 불러오지 못했습니다.<br/>' + escapeHtml(err.message) + '</div>';
-    });
-  }
+  // ---------- Shared grid parsing ----------
 
   function buildMergeMap(merges) {
     var anchorOf = {};
@@ -614,7 +714,8 @@
 
   // Groups rows into sections: a wide merged row starts a new section title,
   // the row right after it (or the first row of an untitled sheet) becomes
-  // the column-label row, blank rows close the current section.
+  // the column-label row, blank rows close the current section. Plain flat
+  // tables (no title banner) naturally collapse to a single section.
   function buildSections(rows, merges, maxCols) {
     var mergeInfo = buildMergeMap(merges);
     var sections = [];
@@ -660,6 +761,239 @@
     return sections;
   }
 
+  function parseFlatSheet(sheetData) {
+    var rows = (sheetData.data && sheetData.data[0] && sheetData.data[0].rowData) || [];
+    var merges = sheetData.merges || [];
+    var maxCols = 0;
+    rows.forEach(function (row) { if (row.values) maxCols = Math.max(maxCols, row.values.length); });
+    var sections = buildSections(rows, merges, maxCols);
+    return sections.filter(function (s) { return s.rows.length; })[0] || { headerLabels: [], rows: [] };
+  }
+
+  function findCol(headerLabels, needle) {
+    if (!headerLabels) return -1;
+    var up = needle.toUpperCase();
+    for (var i = 0; i < headerLabels.length; i++) {
+      if (headerLabels[i] && headerLabels[i].toUpperCase().indexOf(up) !== -1) return i;
+    }
+    return -1;
+  }
+
+  function segAt(row, col) {
+    if (col == null || col < 0) return null;
+    var found = row.segments.filter(function (s) { return s.col === col; });
+    return found[0] || null;
+  }
+
+  function isIntegerLike(v) {
+    if (v === "" || v == null) return false;
+    var stripped = String(v).replace(/,/g, "").trim();
+    return /^-?\d+$/.test(stripped);
+  }
+
+  // ---------- Inventory (재고·설치 현황) view ----------
+
+  function findSheetTitle(keyword) {
+    var found = state.sheets.filter(function (s) { return s.title.indexOf(keyword) !== -1; })[0];
+    return found ? found.title : null;
+  }
+
+  function loadInventoryView() {
+    var itemTitle = findSheetTitle("품목마스터") || findSheetTitle("품목");
+    var invTitle = findSheetTitle("재고");
+    if (!itemTitle || !invTitle) {
+      toast("품목마스터 또는 재고 관리 탭을 찾지 못해 전체 시트 모드로 전환합니다.");
+      setMode("sheet", true);
+      return;
+    }
+
+    document.getElementById("mainArea").innerHTML = '<div class="spinner"></div>';
+    var id = state.settings.spreadsheetId;
+    var fields = "sheets(properties(title),merges,data.rowData.values(formattedValue,userEnteredValue))";
+    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + id +
+      "?ranges=" + encodeURIComponent(quoteSheetTitle(itemTitle)) +
+      "&ranges=" + encodeURIComponent(quoteSheetTitle(invTitle)) +
+      "&includeGridData=true&fields=" + encodeURIComponent(fields);
+
+    apiFetch(url).then(function (data) {
+      var sheetsResp = data.sheets || [];
+      var itemSheet = sheetsResp.filter(function (s) { return s.properties.title === itemTitle; })[0];
+      var invSheet = sheetsResp.filter(function (s) { return s.properties.title === invTitle; })[0];
+      if (!itemSheet || !invSheet) {
+        document.getElementById("mainArea").innerHTML = '<div class="empty-state">품목마스터/재고 관리 데이터를 불러오지 못했습니다.</div>';
+        return;
+      }
+      state.inventoryData = {
+        itemTitle: itemTitle,
+        invTitle: invTitle,
+        itemTable: parseFlatSheet(itemSheet),
+        invTable: parseFlatSheet(invSheet)
+      };
+      renderInventoryView();
+    }).catch(function (err) {
+      document.getElementById("mainArea").innerHTML =
+        '<div class="empty-state">재고 현황을 불러오지 못했습니다.<br/>' + escapeHtml(err.message) + '</div>';
+    });
+  }
+
+  function renderInventoryView() {
+    var d = state.inventoryData;
+    var itemTable = d.itemTable, invTable = d.invTable;
+
+    var cols = {
+      matNo: findCol(itemTable.headerLabels, "MAT NO"),
+      name: findCol(itemTable.headerLabels, "ITEM NAME"),
+      category: findCol(itemTable.headerLabels, "CATEGORY"),
+      manuf: findCol(itemTable.headerLabels, "MANUFACTUR"),
+      invUnitCode: findCol(invTable.headerLabels, "UNIT CODE"),
+      invStatus: findCol(invTable.headerLabels, "STATUS"),
+      invLocation: findCol(invTable.headerLabels, "LOCATION")
+    };
+
+    var groups = {};
+    invTable.rows.forEach(function (row) {
+      var seg = segAt(row, cols.invUnitCode);
+      var code = seg ? seg.value : "";
+      var m = code.match(/K\d+/i);
+      var key = m ? m[0].toUpperCase() : "__unmatched__";
+      (groups[key] = groups[key] || []).push(row);
+    });
+
+    state.inventoryComputed = {
+      itemTable: itemTable,
+      invTable: invTable,
+      invTitle: d.invTitle,
+      cols: cols,
+      groups: groups
+    };
+
+    document.getElementById("mainArea").innerHTML =
+      '<div class="inv-search-wrap"><input type="text" id="invSearchInput" class="search-input" placeholder="🔍 품목명, 카테고리, 제조사로 검색" /></div>' +
+      '<div class="item-list" id="itemList"></div>';
+
+    document.getElementById("invSearchInput").addEventListener("input", renderItemList);
+    renderItemList();
+  }
+
+  function renderItemList() {
+    var c = state.inventoryComputed;
+    var searchEl = document.getElementById("invSearchInput");
+    var query = searchEl ? searchEl.value.trim().toLowerCase() : "";
+
+    var html = "";
+    c.itemTable.rows.forEach(function (itemRow, idx) {
+      var matSeg = segAt(itemRow, c.cols.matNo);
+      var matNo = matSeg ? matSeg.value.toUpperCase() : "";
+      var name = (segAt(itemRow, c.cols.name) || {}).value || "(이름 없음)";
+      var category = (segAt(itemRow, c.cols.category) || {}).value || "";
+      var manuf = (segAt(itemRow, c.cols.manuf) || {}).value || "";
+      var units = c.groups[matNo] || [];
+
+      var haystack = (name + " " + category + " " + manuf + " " + matNo).toLowerCase();
+      if (query && haystack.indexOf(query) === -1) return;
+
+      html += renderItemGroup("group-" + idx, name, category, manuf, units, c);
+    });
+
+    var unmatched = c.groups["__unmatched__"] || [];
+    if (unmatched.length) {
+      var unmatchedHaystack = unmatched.map(function (u) {
+        return u.segments.map(function (s) { return s.value; }).join(" ");
+      }).join(" ").toLowerCase();
+      if (!query || ("미분류 재고".indexOf(query) !== -1) || unmatchedHaystack.indexOf(query) !== -1) {
+        html += renderItemGroup("group-unmatched", "미분류 재고", "품목마스터에 매칭되는 항목 없음", "", unmatched, c);
+      }
+    }
+
+    if (!html) {
+      html = '<div class="empty-state">' +
+        (query ? ('"' + escapeHtml(query) + '" 검색 결과가 없습니다.') : "표시할 품목이 없습니다.") +
+        "</div>";
+    }
+
+    document.getElementById("itemList").innerHTML = html;
+  }
+
+  function renderItemGroup(groupId, name, category, manuf, units, c) {
+    var counts = { stock: 0, install: 0, other: 0 };
+    units.forEach(function (u) {
+      var st = ((segAt(u, c.cols.invStatus) || {}).value || "").toUpperCase();
+      if (st.indexOf("STOCK") !== -1) counts.stock++;
+      else if (st.indexOf("INSTALL") !== -1) counts.install++;
+      else counts.other++;
+    });
+
+    var html = '<div class="item-card">';
+    html += '<button type="button" class="item-toggle" data-target="' + groupId + '">';
+    html += '<span class="item-toggle-main">';
+    html += '<span class="item-name">' + escapeHtml(name) + "</span>";
+    html += '<span class="item-sub">' + escapeHtml(category) + (manuf ? " · " + escapeHtml(manuf) : "") + "</span>";
+    html += "</span>";
+    html += '<span class="item-badges">';
+    if (counts.stock) html += '<span class="badge badge-stock">재고 ' + counts.stock + "</span>";
+    if (counts.install) html += '<span class="badge badge-install">설치 ' + counts.install + "</span>";
+    if (counts.other) html += '<span class="badge badge-other">기타 ' + counts.other + "</span>";
+    if (!units.length) html += '<span class="badge badge-empty">재고 없음</span>';
+    html += "</span>";
+    html += '<span class="item-chevron">›</span>';
+    html += "</button>";
+
+    html += '<div class="item-units" id="' + groupId + '" style="display:none;">';
+    if (!units.length) {
+      html += '<div class="unit-empty">이 품목에 연결된 재고 항목이 없습니다.</div>';
+    } else {
+      units.forEach(function (u) {
+        html += renderUnitCard(u, c.invTable.headerLabels, c.invTitle, c.cols);
+      });
+    }
+    html += "</div></div>";
+    return html;
+  }
+
+  function renderUnitCard(row, headerLabels, sheetTitle, cols) {
+    var headingSeg = segAt(row, cols.invUnitCode);
+    var statusSeg = segAt(row, cols.invStatus);
+    var fields = row.segments.filter(function (s) { return s !== headingSeg && s !== statusSeg; });
+    var searchText = row.segments.map(function (s) { return s.value; }).join(" ").toLowerCase();
+
+    var html = '<div class="row-card unit-card" data-search="' + escapeAttr(searchText) + '">';
+    if (headingSeg) html += renderField(headingSeg, headerLabels, row.rowIndex, sheetTitle, true);
+    html += '<div class="field-grid">';
+    if (statusSeg) html += renderField(statusSeg, headerLabels, row.rowIndex, sheetTitle, false, true);
+    fields.forEach(function (s) {
+      html += renderField(s, headerLabels, row.rowIndex, sheetTitle, false);
+    });
+    html += "</div></div>";
+    return html;
+  }
+
+  // ---------- Generic per-tab (전체 시트) view ----------
+
+  function loadGrid(title) {
+    var id = state.settings.spreadsheetId;
+    var range = quoteSheetTitle(title);
+    var fields = "sheets(merges,data.rowData.values(formattedValue,userEnteredValue))";
+    var url = "https://sheets.googleapis.com/v4/spreadsheets/" + id +
+      "?ranges=" + encodeURIComponent(range) +
+      "&includeGridData=true&fields=" + encodeURIComponent(fields);
+
+    document.getElementById("mainArea").innerHTML = '<div class="spinner"></div>';
+    apiFetch(url).then(function (data) {
+      var sheet = data.sheets && data.sheets[0];
+      if (!sheet) {
+        document.getElementById("mainArea").innerHTML = '<div class="empty-state">데이터가 없습니다.</div>';
+        return;
+      }
+      var rows = (sheet.data && sheet.data[0] && sheet.data[0].rowData) || [];
+      var merges = sheet.merges || [];
+      state.grid = { title: title, rows: rows, merges: merges };
+      renderGrid();
+    }).catch(function (err) {
+      document.getElementById("mainArea").innerHTML =
+        '<div class="empty-state">데이터를 불러오지 못했습니다.<br/>' + escapeHtml(err.message) + '</div>';
+    });
+  }
+
   function renderGrid() {
     var rows = state.grid.rows;
     var maxCols = 0;
@@ -668,6 +1002,7 @@
     });
 
     var sections = buildSections(rows, state.grid.merges, maxCols);
+    var sheetTitle = state.grid.title;
 
     var html = '<div class="sections">';
     sections.forEach(function (section) {
@@ -687,18 +1022,12 @@
         var searchText = row.segments.map(function (s) { return s.value; }).join(" ").toLowerCase();
 
         html += '<div class="row-card" data-search="' + escapeAttr(searchText) + '">';
-        html += renderField(heading, section.headerLabels, row.rowIndex, true);
-        if (subHeading) {
+        html += renderField(heading, section.headerLabels, row.rowIndex, sheetTitle, true);
+        if (subHeading || fields.length) {
           html += '<div class="field-grid">';
-          html += renderField(subHeading, section.headerLabels, row.rowIndex, false, true);
+          if (subHeading) html += renderField(subHeading, section.headerLabels, row.rowIndex, sheetTitle, false, true);
           fields.forEach(function (s) {
-            html += renderField(s, section.headerLabels, row.rowIndex, false);
-          });
-          html += "</div>";
-        } else if (fields.length) {
-          html += '<div class="field-grid">';
-          fields.forEach(function (s) {
-            html += renderField(s, section.headerLabels, row.rowIndex, false);
+            html += renderField(s, section.headerLabels, row.rowIndex, sheetTitle, false);
           });
           html += "</div>";
         }
@@ -713,24 +1042,6 @@
     }
 
     document.getElementById("mainArea").innerHTML = html;
-
-    var inputs = document.querySelectorAll(".row-heading, .field-item input");
-    inputs.forEach(function (input) {
-      var original = input.value;
-      input.addEventListener("input", function () {
-        var r = input.getAttribute("data-row");
-        var c = input.getAttribute("data-col");
-        var dirtyKey = r + ":" + c;
-        if (input.value !== original) {
-          input.classList.add("dirty");
-          state.dirty[dirtyKey] = { row: parseInt(r, 10), col: parseInt(c, 10), value: input.value };
-        } else {
-          input.classList.remove("dirty");
-          delete state.dirty[dirtyKey];
-        }
-        updateDirtyCount();
-      });
-    });
   }
 
   // Picks which cell(s) in a row identify it to a human (item name, customer
@@ -740,9 +1051,9 @@
     var matches = [];
     segments.forEach(function (s) {
       if (s.value === "") return;
-      var label = (headerLabels && headerLabels[s.col]) || "";
+      var label = ((headerLabels && headerLabels[s.col]) || "").toUpperCase();
       for (var i = 0; i < IDENTITY_KEYWORDS.length; i++) {
-        if (label.indexOf(IDENTITY_KEYWORDS[i]) !== -1) {
+        if (label.indexOf(IDENTITY_KEYWORDS[i].toUpperCase()) !== -1) {
           matches.push({ seg: s, priority: i, label: label });
           return;
         }
@@ -759,18 +1070,35 @@
     return { heading: heading, subHeading: subMatch ? subMatch.seg : null };
   }
 
-  function renderField(seg, headerLabels, rowIndex, isHeading, highlight) {
+  // ---------- Field rendering + dirty tracking (shared) ----------
+
+  function fieldAttrs(sheetTitle, rowIndex, col, value) {
+    return 'data-sheet="' + escapeAttr(sheetTitle) + '" data-row="' + rowIndex + '" data-col="' + col +
+      '" data-original="' + escapeAttr(value) + '" value="' + escapeAttr(value) + '"';
+  }
+
+  function renderField(seg, headerLabels, rowIndex, sheetTitle, isHeading, highlight) {
     var label = (headerLabels && headerLabels[seg.col]) || "";
     var inputHtml;
+
     if (seg.isFormula) {
       inputHtml = isHeading
         ? '<div class="row-heading locked">' + escapeHtml(seg.value) + "</div>"
         : '<span class="locked-value">' + escapeHtml(seg.value) + "</span>";
+    } else if (!isHeading && isIntegerLike(seg.value)) {
+      var stripped = seg.value.replace(/,/g, "");
+      inputHtml = '<div class="stepper">' +
+        '<button type="button" class="step-btn" data-dir="-1">−</button>' +
+        '<input type="text" inputmode="numeric" class="step-input" ' + fieldAttrs(sheetTitle, rowIndex, seg.col, stripped) + " />" +
+        '<button type="button" class="step-btn" data-dir="1">+</button>' +
+        "</div>";
     } else {
       var cls = isHeading ? "row-heading" : "";
-      inputHtml = '<input type="text" class="' + cls + '" data-row="' + rowIndex + '" data-col="' + seg.col +
-        '" value="' + escapeAttr(seg.value) + '" />';
+      var isStatus = label.toUpperCase().indexOf("STATUS") !== -1;
+      inputHtml = '<input type="text" class="' + cls + '"' + (isStatus ? ' list="statusOptions"' : "") +
+        " " + fieldAttrs(sheetTitle, rowIndex, seg.col, seg.value) + " />";
     }
+
     if (isHeading) return inputHtml;
     var itemCls = highlight ? "field-item highlight" : "field-item";
     return '<div class="' + itemCls + '"><label>' + escapeHtml(label || ("열 " + (seg.col + 1))) + "</label>" + inputHtml + "</div>";
@@ -788,11 +1116,10 @@
     var keys = Object.keys(state.dirty);
     if (!keys.length) return;
     var id = state.settings.spreadsheetId;
-    var title = state.grid.title;
 
     var data = keys.map(function (k) {
       var edit = state.dirty[k];
-      var a1 = quoteSheetTitle(title) + "!" + colToLetter(edit.col) + (edit.row + 1);
+      var a1 = quoteSheetTitle(edit.sheet) + "!" + colToLetter(edit.col) + (edit.row + 1);
       return { range: a1, values: [[edit.value]] };
     });
 
@@ -810,7 +1137,7 @@
     ).then(function () {
       toast(keys.length + "개 항목을 저장했습니다.");
       state.dirty = {};
-      loadGrid(title);
+      refreshCurrentView();
     }).catch(function (err) {
       toast("저장 실패: " + err.message);
     }).finally(function () {
@@ -832,12 +1159,61 @@
 
   document.getElementById("settingsBtn").addEventListener("click", openSettings);
   document.getElementById("loginBtn").addEventListener("click", login);
-  document.getElementById("refreshBtn").addEventListener("click", function () {
-    if (state.activeSheetTitle) loadGrid(state.activeSheetTitle);
-  });
+  document.getElementById("refreshBtn").addEventListener("click", refreshCurrentView);
   document.getElementById("saveBtn").addEventListener("click", saveChanges);
   document.getElementById("searchInput").addEventListener("input", function (e) {
     filterRows(e.target.value);
+  });
+  document.querySelectorAll(".mode-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () { setMode(btn.getAttribute("data-mode")); });
+  });
+
+  var mainArea = document.getElementById("mainArea");
+
+  // Delegated dirty-tracking: covers every editable input rendered into
+  // mainArea, in either mode, without re-binding listeners on each render.
+  mainArea.addEventListener("input", function (e) {
+    var el = e.target;
+    if (!el.matches("input[data-row]")) return;
+    var sheet = el.getAttribute("data-sheet");
+    var row = el.getAttribute("data-row");
+    var col = el.getAttribute("data-col");
+    var original = el.getAttribute("data-original");
+    var key = sheet + "|" + row + ":" + col;
+    if (el.value !== original) {
+      el.classList.add("dirty");
+      state.dirty[key] = { sheet: sheet, row: parseInt(row, 10), col: parseInt(col, 10), value: el.value };
+    } else {
+      el.classList.remove("dirty");
+      delete state.dirty[key];
+    }
+    updateDirtyCount();
+  });
+
+  // Delegated clicks: item accordion toggles and quantity stepper buttons.
+  mainArea.addEventListener("click", function (e) {
+    var toggle = e.target.closest(".item-toggle");
+    if (toggle) {
+      var target = document.getElementById(toggle.getAttribute("data-target"));
+      if (target) {
+        var open = target.style.display !== "none";
+        target.style.display = open ? "none" : "block";
+        toggle.classList.toggle("expanded", !open);
+      }
+      return;
+    }
+    var stepBtn = e.target.closest(".step-btn");
+    if (stepBtn) {
+      var wrap = stepBtn.parentElement;
+      var input = wrap.querySelector(".step-input");
+      var dir = parseInt(stepBtn.getAttribute("data-dir"), 10);
+      var cur = parseInt((input.value || "0").replace(/,/g, ""), 10);
+      if (isNaN(cur)) cur = 0;
+      var next = cur + dir;
+      if (next < 0) next = 0;
+      input.value = String(next);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
   });
 
   if (!state.settings.clientId) {
