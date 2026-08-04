@@ -712,12 +712,56 @@
     return segments;
   }
 
-  // Groups rows into sections: a wide merged row starts a new section title,
-  // the row right after it (or the first row of an untitled sheet) becomes
-  // the column-label row, blank rows close the current section. Plain flat
-  // tables (no title banner) naturally collapse to a single section.
+  // Every list-style tab exported from this workbook (품목마스터, 재고 관리,
+  // 판매·설치 이력, 부품 수리 트래킹, ...) follows the same convention: one
+  // or more single-cell banner lines, then a header row whose first cell is
+  // literally "NO.", then data rows until the first fully blank row. Detect
+  // that directly instead of guessing from merges, which most of these tabs
+  // don't actually use.
+  function findListHeaderRow(rows, mergeInfo, maxCols) {
+    var bannerLines = [];
+    for (var r = 0; r < rows.length; r++) {
+      var segs = getRowSegments(rows, mergeInfo, maxCols, r);
+      var nonEmpty = segs.filter(function (s) { return s.value !== ""; });
+      if (!nonEmpty.length) continue;
+      if (segs[0] && segs[0].value.trim().toUpperCase() === "NO.") {
+        return { rowIndex: r, banner: bannerLines.join(" — ") };
+      }
+      if (nonEmpty.length === 1) {
+        var v = nonEmpty[0].value;
+        if (v.indexOf("NATURAL HEALING") === -1 && bannerLines.indexOf(v) === -1 && bannerLines.length < 2) {
+          bannerLines.push(v);
+        }
+      }
+    }
+    return null;
+  }
+
+  // Groups rows into sections. Prefers the "NO." header convention above;
+  // falls back to the older merge-based heuristic (a wide merged row starts
+  // a new section title, the row after it is the column-label row, blank
+  // rows close the section) for genuine dashboard-style tabs with real
+  // merged banner cells, like 📊 대시보드.
   function buildSections(rows, merges, maxCols) {
     var mergeInfo = buildMergeMap(merges);
+
+    var listHeader = findListHeaderRow(rows, mergeInfo, maxCols);
+    if (listHeader) {
+      var headerSegs = getRowSegments(rows, mergeInfo, maxCols, listHeader.rowIndex);
+      var labels = new Array(maxCols).fill("");
+      headerSegs.forEach(function (s) {
+        for (var cc = s.col; cc < s.col + s.colSpan; cc++) labels[cc] = s.value;
+      });
+      var section = { title: listHeader.banner || null, headerLabels: labels, rows: [] };
+      for (var rr = listHeader.rowIndex + 1; rr < rows.length; rr++) {
+        var rSegs = getRowSegments(rows, mergeInfo, maxCols, rr);
+        var rNonEmpty = rSegs.filter(function (s) { return s.value !== ""; });
+        if (!rNonEmpty.length) break;
+        section.rows.push({ rowIndex: rr, segments: rSegs });
+      }
+      return [section];
+    }
+
     var sections = [];
     var current = null;
     var r = 0;
@@ -746,11 +790,11 @@
       }
 
       if (!current.headerLabels) {
-        var labels = new Array(maxCols).fill("");
+        var labels2 = new Array(maxCols).fill("");
         segs.forEach(function (s) {
-          for (var cc = s.col; cc < s.col + s.colSpan; cc++) labels[cc] = s.value;
+          for (var cc2 = s.col; cc2 < s.col + s.colSpan; cc2++) labels2[cc2] = s.value;
         });
-        current.headerLabels = labels;
+        current.headerLabels = labels2;
         r++;
         continue;
       }
@@ -846,16 +890,25 @@
       category: findCol(itemTable.headerLabels, "CATEGORY"),
       manuf: findCol(itemTable.headerLabels, "MANUFACTUR"),
       invUnitCode: findCol(invTable.headerLabels, "UNIT CODE"),
+      invMatNo: findCol(invTable.headerLabels, "MAT NO"),
       invStatus: findCol(invTable.headerLabels, "STATUS"),
       invLocation: findCol(invTable.headerLabels, "LOCATION")
     };
 
+    // 재고 관리 carries its own MAT NO. column, so prefer that for the join
+    // and only fall back to parsing the unit code (e.g. INV-K1033352-001)
+    // if that column is ever left blank.
     var groups = {};
     invTable.rows.forEach(function (row) {
-      var seg = segAt(row, cols.invUnitCode);
-      var code = seg ? seg.value : "";
-      var m = code.match(/K\d+/i);
-      var key = m ? m[0].toUpperCase() : "__unmatched__";
+      var matSeg = segAt(row, cols.invMatNo);
+      var key = matSeg && matSeg.value ? matSeg.value.trim().toUpperCase() : "";
+      if (!key) {
+        var codeSeg = segAt(row, cols.invUnitCode);
+        var code = codeSeg ? codeSeg.value : "";
+        var m = code.match(/K\d+/i);
+        key = m ? m[0].toUpperCase() : "";
+      }
+      if (!key) key = "__unmatched__";
       (groups[key] = groups[key] || []).push(row);
     });
 
@@ -883,7 +936,7 @@
     var html = "";
     c.itemTable.rows.forEach(function (itemRow, idx) {
       var matSeg = segAt(itemRow, c.cols.matNo);
-      var matNo = matSeg ? matSeg.value.toUpperCase() : "";
+      var matNo = matSeg ? matSeg.value.trim().toUpperCase() : "";
       var name = (segAt(itemRow, c.cols.name) || {}).value || "(이름 없음)";
       var category = (segAt(itemRow, c.cols.category) || {}).value || "";
       var manuf = (segAt(itemRow, c.cols.manuf) || {}).value || "";
