@@ -158,6 +158,14 @@
   }
   .field-item input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
   .field-item input.dirty { background: #fff3cd; border-color: #f0c419; }
+  .field-item.highlight label { color: var(--blue-dark); font-weight: 600; }
+  .field-item.highlight input {
+    font-weight: 700;
+    font-size: 15px;
+    background: #eef2ff;
+    border-color: #c7d2fe;
+  }
+  .field-item.highlight .locked-value { font-weight: 700; font-size: 15px; }
   .field-item .locked-value {
     display: block;
     padding: 8px;
@@ -215,6 +223,17 @@
     border: 1px solid var(--border);
     border-radius: 8px;
   }
+  .search-wrap { padding: 8px 12px 0 12px; }
+  .search-input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fff;
+    font-family: inherit;
+  }
+  .search-input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); padding: 8px 12px 0; }
   .legend span::before {
     content: "";
@@ -250,6 +269,9 @@
 </header>
 
 <div class="tabs" id="tabsRow" style="display:none;"></div>
+<div class="search-wrap" id="searchWrap" style="display:none;">
+  <input type="text" id="searchInput" class="search-input" placeholder="🔍 품목명, 고객명 등으로 검색" />
+</div>
 <div class="legend" id="legendRow" style="display:none;">
   <span class="l-edit">수정 가능</span>
   <span class="l-lock">수식(자동계산, 잠금)</span>
@@ -280,6 +302,7 @@
   var DEFAULT_SPREADSHEET_ID = "1nZWey3gKZPZK_WeCBfKICE8x8T5MF3Bep7ZHrFUKcLE";
   var DEFAULT_CLIENT_ID = "613652838056-oki9p112t4qr9uec266s26o4sd7hf5op.apps.googleusercontent.com";
   var SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+  var IDENTITY_KEYWORDS = ["고객명", "고객", "성명", "품목명", "품목", "제품명", "유닛코드", "시리얼번호", "카테고리", "이름", "명칭"];
 
   var state = {
     settings: loadSettings(),
@@ -403,6 +426,7 @@
   function onLoginSuccess() {
     toast("로그인되었습니다.");
     document.getElementById("tabsRow").style.display = "flex";
+    document.getElementById("searchWrap").style.display = "block";
     document.getElementById("legendRow").style.display = "flex";
     document.getElementById("saveBar").style.display = "flex";
     loadSheetList();
@@ -486,7 +510,40 @@
     state.dirty = {};
     updateDirtyCount();
     renderTabs();
+    var searchInput = document.getElementById("searchInput");
+    searchInput.value = "";
     loadGrid(title);
+  }
+
+  function filterRows(query) {
+    query = (query || "").trim().toLowerCase();
+    var anyVisibleOverall = false;
+    document.querySelectorAll(".section-card").forEach(function (section) {
+      var anyVisible = false;
+      section.querySelectorAll(".row-card").forEach(function (card) {
+        var haystack = card.getAttribute("data-search") || "";
+        var match = !query || haystack.indexOf(query) !== -1;
+        card.style.display = match ? "" : "none";
+        if (match) anyVisible = true;
+      });
+      section.style.display = anyVisible ? "" : "none";
+      if (anyVisible) anyVisibleOverall = true;
+    });
+
+    var mainArea = document.getElementById("mainArea");
+    var msg = document.getElementById("noResultsMsg");
+    if (query && !anyVisibleOverall) {
+      if (!msg) {
+        msg = document.createElement("div");
+        msg.id = "noResultsMsg";
+        msg.className = "empty-state";
+        mainArea.appendChild(msg);
+      }
+      msg.textContent = '"' + query + '" 검색 결과가 없습니다.';
+      msg.style.display = "";
+    } else if (msg) {
+      msg.style.display = "none";
+    }
   }
 
   // ---------- Load & render grid ----------
@@ -620,13 +677,25 @@
         html += '<div class="section-title">' + escapeHtml(section.title) + "</div>";
       }
       section.rows.forEach(function (row) {
-        var nonEmpty = row.segments.filter(function (s) { return s.value !== ""; });
-        var heading = nonEmpty[0] || row.segments[0];
-        var fields = row.segments.filter(function (s) { return s !== heading; });
+        var picked = pickHeadingFields(row.segments, section.headerLabels);
+        var heading = picked.heading;
+        var subHeading = picked.subHeading;
+        var fields = row.segments.filter(function (s) {
+          return s !== heading && s !== subHeading;
+        });
 
-        html += '<div class="row-card">';
+        var searchText = row.segments.map(function (s) { return s.value; }).join(" ").toLowerCase();
+
+        html += '<div class="row-card" data-search="' + escapeAttr(searchText) + '">';
         html += renderField(heading, section.headerLabels, row.rowIndex, true);
-        if (fields.length) {
+        if (subHeading) {
+          html += '<div class="field-grid">';
+          html += renderField(subHeading, section.headerLabels, row.rowIndex, false, true);
+          fields.forEach(function (s) {
+            html += renderField(s, section.headerLabels, row.rowIndex, false);
+          });
+          html += "</div>";
+        } else if (fields.length) {
           html += '<div class="field-grid">';
           fields.forEach(function (s) {
             html += renderField(s, section.headerLabels, row.rowIndex, false);
@@ -664,7 +733,33 @@
     });
   }
 
-  function renderField(seg, headerLabels, rowIndex, isHeading) {
+  // Picks which cell(s) in a row identify it to a human (item name, customer
+  // name, ...) so that becomes the card's heading instead of whichever
+  // column happens to come first in the sheet.
+  function pickHeadingFields(segments, headerLabels) {
+    var matches = [];
+    segments.forEach(function (s) {
+      if (s.value === "") return;
+      var label = (headerLabels && headerLabels[s.col]) || "";
+      for (var i = 0; i < IDENTITY_KEYWORDS.length; i++) {
+        if (label.indexOf(IDENTITY_KEYWORDS[i]) !== -1) {
+          matches.push({ seg: s, priority: i, label: label });
+          return;
+        }
+      }
+    });
+    matches.sort(function (a, b) { return a.priority - b.priority; });
+
+    if (!matches.length) {
+      var nonEmpty = segments.filter(function (s) { return s.value !== ""; });
+      return { heading: nonEmpty[0] || segments[0], subHeading: null };
+    }
+    var heading = matches[0].seg;
+    var subMatch = matches.filter(function (m) { return m.label !== matches[0].label; })[0];
+    return { heading: heading, subHeading: subMatch ? subMatch.seg : null };
+  }
+
+  function renderField(seg, headerLabels, rowIndex, isHeading, highlight) {
     var label = (headerLabels && headerLabels[seg.col]) || "";
     var inputHtml;
     if (seg.isFormula) {
@@ -677,7 +772,8 @@
         '" value="' + escapeAttr(seg.value) + '" />';
     }
     if (isHeading) return inputHtml;
-    return '<div class="field-item"><label>' + escapeHtml(label || ("열 " + (seg.col + 1))) + "</label>" + inputHtml + "</div>";
+    var itemCls = highlight ? "field-item highlight" : "field-item";
+    return '<div class="' + itemCls + '"><label>' + escapeHtml(label || ("열 " + (seg.col + 1))) + "</label>" + inputHtml + "</div>";
   }
 
   function updateDirtyCount() {
@@ -740,6 +836,9 @@
     if (state.activeSheetTitle) loadGrid(state.activeSheetTitle);
   });
   document.getElementById("saveBtn").addEventListener("click", saveChanges);
+  document.getElementById("searchInput").addEventListener("input", function (e) {
+    filterRows(e.target.value);
+  });
 
   if (!state.settings.clientId) {
     openSettings();
