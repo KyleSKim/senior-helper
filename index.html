@@ -222,7 +222,7 @@
     <p>이 페이지는 Google 계정으로 로그인한 뒤,<br/>연동된 ERP 구글시트 값을 모바일에서 바로 수정할 수 있는 도구입니다.</p>
     <p class="muted">수식으로 자동 계산되는 셀은 잠겨 있고, 직접 입력한 값만 수정할 수 있어요.</p>
     <button class="btn" id="loginBtn">Google로 로그인</button>
-    <p class="muted" id="loginHint" style="margin-top:10px;">처음 사용하신다면 오른쪽 위 ⚙️ 설정에서 Client ID를 먼저 입력해주세요.</p>
+    <p class="muted" id="loginHint" style="margin-top:10px;">로그인이 안 되면 이 페이지 주소가 Google Cloud Console의 승인된 자바스크립트 원본으로 등록되어 있는지 확인해주세요.</p>
   </div>
 </main>
 
@@ -240,6 +240,7 @@
 
   var STORAGE_KEY = "erp_dashboard_settings_v1";
   var DEFAULT_SPREADSHEET_ID = "1nZWey3gKZPZK_WeCBfKICE8x8T5MF3Bep7ZHrFUKcLE";
+  var DEFAULT_CLIENT_ID = "613652838056-oki9p112t4qr9uec266s26o4sd7hf5op.apps.googleusercontent.com";
   var SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
   var state = {
@@ -257,7 +258,7 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) return JSON.parse(raw);
     } catch (e) {}
-    return { clientId: "", spreadsheetId: DEFAULT_SPREADSHEET_ID };
+    return { clientId: DEFAULT_CLIENT_ID, spreadsheetId: DEFAULT_SPREADSHEET_ID };
   }
 
   function saveSettings(s) {
