@@ -99,38 +99,76 @@
   .btn.secondary { background: #fff; color: var(--blue); border: 1px solid var(--blue); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .muted { color: var(--muted); font-size: 13px; }
-  .grid-scroll {
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+  .sections { display: flex; flex-direction: column; gap: 14px; }
+  .section-card {
     background: #fff;
-    max-width: 100%;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    overflow: hidden;
   }
-  table.sheet-grid { border-collapse: collapse; font-size: 13px; }
-  table.sheet-grid td {
-    border: 1px solid var(--border);
-    padding: 0;
-    vertical-align: middle;
-    min-width: 90px;
+  .section-title {
+    font-size: 15px;
+    font-weight: 700;
+    padding: 12px 14px;
+    background: #eef2ff;
+    color: var(--blue-dark);
+    border-bottom: 1px solid var(--border);
   }
-  table.sheet-grid td.locked {
-    background: #f0f1f3;
-    color: var(--muted);
-    padding: 8px 6px;
-    white-space: nowrap;
+  .row-card {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
   }
-  table.sheet-grid input {
+  .row-card:last-child { border-bottom: none; }
+  .row-heading {
     width: 100%;
-    height: 100%;
-    min-height: 34px;
     border: none;
-    padding: 8px 6px;
-    font-size: 13px;
+    background: transparent;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 4px 0 8px 0;
+    font-family: inherit;
+  }
+  .row-heading.locked { color: var(--text); background: transparent; }
+  .row-heading:focus { outline: none; border-bottom: 2px solid var(--blue); }
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+  }
+  .field-item {
+    min-width: 0;
+  }
+  .field-item label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .field-item input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 14px;
     background: #fffef0;
     font-family: inherit;
   }
-  table.sheet-grid input:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
-  table.sheet-grid input.dirty { background: #fff3cd; }
+  .field-item input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+  .field-item input.dirty { background: #fff3cd; border-color: #f0c419; }
+  .field-item .locked-value {
+    display: block;
+    padding: 8px;
+    font-size: 14px;
+    color: var(--muted);
+    background: #f0f1f3;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    min-height: 18px;
+    word-break: break-word;
+  }
   .save-bar {
     position: fixed;
     left: 0; right: 0; bottom: 0;
@@ -497,46 +535,117 @@
     return { anchorOf: anchorOf, spanOf: spanOf };
   }
 
+  // Reads the visible (non-continuation) cells of one row, expanding merges
+  // so each entry already carries its full column span.
+  function getRowSegments(rows, mergeInfo, maxCols, r) {
+    var values = (rows[r] && rows[r].values) || [];
+    var segments = [];
+    var c = 0;
+    while (c < maxCols) {
+      var key = r + ":" + c;
+      if (mergeInfo.anchorOf[key]) { c++; continue; }
+      var span = mergeInfo.spanOf[key];
+      var colSpan = span ? span.colSpan : 1;
+      var cell = values[c] || {};
+      var isFormula = !!(cell.userEnteredValue && cell.userEnteredValue.formulaValue !== undefined);
+      var value = cell.formattedValue !== undefined ? cell.formattedValue : "";
+      segments.push({ col: c, colSpan: colSpan, value: value, isFormula: isFormula });
+      c += colSpan;
+    }
+    return segments;
+  }
+
+  // Groups rows into sections: a wide merged row starts a new section title,
+  // the row right after it (or the first row of an untitled sheet) becomes
+  // the column-label row, blank rows close the current section.
+  function buildSections(rows, merges, maxCols) {
+    var mergeInfo = buildMergeMap(merges);
+    var sections = [];
+    var current = null;
+    var r = 0;
+    while (r < rows.length) {
+      var segs = getRowSegments(rows, mergeInfo, maxCols, r);
+      var nonEmpty = segs.filter(function (s) { return s.value !== ""; });
+
+      if (nonEmpty.length === 0) {
+        current = null;
+        r++;
+        continue;
+      }
+
+      var hasWideSegment = segs.some(function (s) { return s.colSpan >= Math.ceil(maxCols * 0.5); });
+      if (hasWideSegment && nonEmpty.length <= 2 && !current) {
+        var titleSeg = nonEmpty.reduce(function (a, b) { return b.colSpan > a.colSpan ? b : a; });
+        current = { title: titleSeg.value, headerLabels: null, rows: [] };
+        sections.push(current);
+        r++;
+        continue;
+      }
+
+      if (!current) {
+        current = { title: null, headerLabels: null, rows: [] };
+        sections.push(current);
+      }
+
+      if (!current.headerLabels) {
+        var labels = new Array(maxCols).fill("");
+        segs.forEach(function (s) {
+          for (var cc = s.col; cc < s.col + s.colSpan; cc++) labels[cc] = s.value;
+        });
+        current.headerLabels = labels;
+        r++;
+        continue;
+      }
+
+      current.rows.push({ rowIndex: r, segments: segs });
+      r++;
+    }
+    return sections;
+  }
+
   function renderGrid() {
     var rows = state.grid.rows;
-    var mergeInfo = buildMergeMap(state.grid.merges);
     var maxCols = 0;
     rows.forEach(function (row) {
       if (row.values) maxCols = Math.max(maxCols, row.values.length);
     });
 
-    var html = '<div class="grid-scroll"><table class="sheet-grid"><tbody>';
-    for (var r = 0; r < rows.length; r++) {
-      var values = (rows[r] && rows[r].values) || [];
-      html += "<tr>";
-      for (var c = 0; c < maxCols; c++) {
-        var key = r + ":" + c;
-        if (mergeInfo.anchorOf[key]) continue; // covered by a merge, skip
+    var sections = buildSections(rows, state.grid.merges, maxCols);
 
-        var span = mergeInfo.spanOf[key];
-        var rowSpanAttr = span && span.rowSpan > 1 ? ' rowspan="' + span.rowSpan + '"' : "";
-        var colSpanAttr = span && span.colSpan > 1 ? ' colspan="' + span.colSpan + '"' : "";
-
-        var cell = values[c] || {};
-        var isFormula = !!(cell.userEnteredValue && cell.userEnteredValue.formulaValue !== undefined);
-        var display = cell.formattedValue !== undefined ? cell.formattedValue : "";
-
-        if (isFormula) {
-          html += '<td class="locked"' + rowSpanAttr + colSpanAttr + '>' + escapeHtml(display) + "</td>";
-        } else {
-          html += '<td' + rowSpanAttr + colSpanAttr + '>' +
-            '<input type="text" data-row="' + r + '" data-col="' + c + '" value="' +
-            escapeAttr(display) + '" />' +
-            "</td>";
-        }
+    var html = '<div class="sections">';
+    sections.forEach(function (section) {
+      if (!section.rows.length) return;
+      html += '<div class="section-card">';
+      if (section.title) {
+        html += '<div class="section-title">' + escapeHtml(section.title) + "</div>";
       }
-      html += "</tr>";
+      section.rows.forEach(function (row) {
+        var nonEmpty = row.segments.filter(function (s) { return s.value !== ""; });
+        var heading = nonEmpty[0] || row.segments[0];
+        var fields = row.segments.filter(function (s) { return s !== heading; });
+
+        html += '<div class="row-card">';
+        html += renderField(heading, section.headerLabels, row.rowIndex, true);
+        if (fields.length) {
+          html += '<div class="field-grid">';
+          fields.forEach(function (s) {
+            html += renderField(s, section.headerLabels, row.rowIndex, false);
+          });
+          html += "</div>";
+        }
+        html += "</div>";
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+
+    if (sections.every(function (s) { return !s.rows.length; })) {
+      html = '<div class="empty-state">이 탭에는 표시할 데이터가 없습니다.</div>';
     }
-    html += "</tbody></table></div>";
 
     document.getElementById("mainArea").innerHTML = html;
 
-    var inputs = document.querySelectorAll("table.sheet-grid input");
+    var inputs = document.querySelectorAll(".row-heading, .field-item input");
     inputs.forEach(function (input) {
       var original = input.value;
       input.addEventListener("input", function () {
@@ -553,6 +662,22 @@
         updateDirtyCount();
       });
     });
+  }
+
+  function renderField(seg, headerLabels, rowIndex, isHeading) {
+    var label = (headerLabels && headerLabels[seg.col]) || "";
+    var inputHtml;
+    if (seg.isFormula) {
+      inputHtml = isHeading
+        ? '<div class="row-heading locked">' + escapeHtml(seg.value) + "</div>"
+        : '<span class="locked-value">' + escapeHtml(seg.value) + "</span>";
+    } else {
+      var cls = isHeading ? "row-heading" : "";
+      inputHtml = '<input type="text" class="' + cls + '" data-row="' + rowIndex + '" data-col="' + seg.col +
+        '" value="' + escapeAttr(seg.value) + '" />';
+    }
+    if (isHeading) return inputHtml;
+    return '<div class="field-item"><label>' + escapeHtml(label || ("열 " + (seg.col + 1))) + "</label>" + inputHtml + "</div>";
   }
 
   function updateDirtyCount() {
